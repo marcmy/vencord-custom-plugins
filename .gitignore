@@ -1,0 +1,4 @@
+# Optional local notes/logs
+*.log
+*.tmp
+
