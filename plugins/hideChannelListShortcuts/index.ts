@@ -14,6 +14,10 @@ type HideReason = ShortcutKind | "separator";
 const HIDDEN_ATTR = "data-vc-hide-channel-list-shortcut";
 const PREV_DISPLAY_ATTR = "data-vc-hide-channel-list-shortcut-prev-display";
 const PREV_PRIORITY_ATTR = "data-vc-hide-channel-list-shortcut-prev-priority";
+const GAP_ATTR = "data-vc-hide-channel-list-shortcut-gap";
+const PREV_MARGIN_TOP_ATTR = "data-vc-hide-channel-list-shortcut-prev-margin-top";
+const PREV_MARGIN_TOP_PRIORITY_ATTR = "data-vc-hide-channel-list-shortcut-prev-margin-top-priority";
+const TOP_GAP_PX = 8;
 
 let observer: MutationObserver | null = null;
 let frameId = 0;
@@ -165,7 +169,66 @@ function cleanupOrphanedSeparators() {
     }
 }
 
+function hasHiddenShortcutRow(el: HTMLElement) {
+    const reason = el.getAttribute(HIDDEN_ATTR);
+    return reason === "events" || reason === "serverBoosts";
+}
+
+function clearAddedTopGaps() {
+    for (const el of document.querySelectorAll<HTMLElement>(`[${GAP_ATTR}]`)) {
+        const prevMarginTop = el.getAttribute(PREV_MARGIN_TOP_ATTR) ?? "";
+        const prevPriority = el.getAttribute(PREV_MARGIN_TOP_PRIORITY_ATTR) ?? "";
+
+        if (prevMarginTop.length > 0) {
+            el.style.setProperty("margin-top", prevMarginTop, prevPriority);
+        } else {
+            el.style.removeProperty("margin-top");
+        }
+
+        el.removeAttribute(GAP_ATTR);
+        el.removeAttribute(PREV_MARGIN_TOP_ATTR);
+        el.removeAttribute(PREV_MARGIN_TOP_PRIORITY_ATTR);
+    }
+}
+
+function applyTopGapForFirstChannelRows() {
+    const parents = new Set<HTMLElement>();
+
+    for (const el of document.querySelectorAll<HTMLElement>(`[${HIDDEN_ATTR}]`)) {
+        if (!hasHiddenShortcutRow(el))
+            continue;
+
+        const parent = el.parentElement;
+        if (parent)
+            parents.add(parent);
+    }
+
+    for (const parent of parents) {
+        const children = Array.from(parent.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+        const firstChannelIndex = children.findIndex(child => isVisibleElement(child) && isChannelRowCandidate(child));
+        if (firstChannelIndex < 0)
+            continue;
+
+        const hasVisibleRowBefore = children
+            .slice(0, firstChannelIndex)
+            .some(child => isVisibleElement(child) && !child.hasAttribute(HIDDEN_ATTR));
+        if (hasVisibleRowBefore)
+            continue;
+
+        const firstChannelRow = children[firstChannelIndex];
+        if (firstChannelRow.hasAttribute(GAP_ATTR))
+            continue;
+
+        firstChannelRow.setAttribute(GAP_ATTR, "1");
+        firstChannelRow.setAttribute(PREV_MARGIN_TOP_ATTR, firstChannelRow.style.getPropertyValue("margin-top"));
+        firstChannelRow.setAttribute(PREV_MARGIN_TOP_PRIORITY_ATTR, firstChannelRow.style.getPropertyPriority("margin-top"));
+        firstChannelRow.style.setProperty("margin-top", `${TOP_GAP_PX}px`, "important");
+    }
+}
+
 function restoreHiddenRows() {
+    clearAddedTopGaps();
+
     for (const el of document.querySelectorAll<HTMLElement>(`[${HIDDEN_ATTR}]`)) {
         const prevDisplay = el.getAttribute(PREV_DISPLAY_ATTR) ?? "";
         const prevPriority = el.getAttribute(PREV_PRIORITY_ATTR) ?? "";
@@ -219,6 +282,7 @@ function applyHiding() {
     }
 
     cleanupOrphanedSeparators();
+    applyTopGapForFirstChannelRows();
 }
 
 function scheduleApply() {
